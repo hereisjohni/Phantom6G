@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Wizualizacja Temperatury – Phantom 6G</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .chart-wrapper {
+            width: 90%;
+            max-width: 1000px;
+            background: #fff;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 8px;
+        }
+
+        .chart-container {
+            height: 400px;
+        }
+
+        .export-btn {
+            margin-top: 10px;
+            padding: 8px 14px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .data-box {
+            width: 90%;
+            max-width: 1000px;
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 12px 20px;
+            margin-top: 20px;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Wizualizacja Temperatury – Phantom 6G</h2>
+
+<!-- WYKRES 1 REALTIME -->
+<div class="chart-wrapper">
+    <h3>Wykres temperatury (czas rzeczywisty)</h3>
+    <div class="chart-container">
+        <canvas id="tempChartTime"></canvas>
+    </div>
+    <button class="export-btn" onclick="exportChart(tempChartTime, 'temperatura_czas.png')">
+        💾 Eksportuj PNG
+    </button>
+</div>
+
+<!-- WYKRES 2 – HISTORYCZNY -->
+<div class="chart-wrapper">
+    <h3>Wykres temperatury (wybrana data)</h3>
+    <label>
+        📅 Wybierz datę:
+        <input type="date" id="datePicker">
+    </label>
+    <button class="export-btn" onclick="loadHistoricalData()">Pokaż</button>
+
+    <div class="chart-container" style="margin-top:10px;">
+        <canvas id="tempChartDate"></canvas>
+    </div>
+    <button class="export-btn" onclick="exportChart(tempChartDate, 'temperatura_data.png')">
+        💾 Eksportuj PNG
+    </button>
+</div>
+
+<!-- DANE -->
+<div class="data-box">
+    🌡️ Ostatnia temperatura: <strong id="lastTemp">---</strong> °C<br>
+    📊 Średnia temperatura: <strong id="avgTemp">---</strong> °C
+</div>
+
+<div class="data-box">
+    <strong>📡 Parametry pomiarowe</strong><br><br>
+    Sonda: <span id="sonda">---</span><br>
+    Częstotliwość: <span id="freq">---</span> GHz<br>
+    Moc: <span id="moc">---</span> W<br>
+    R<sub>nom</sub>: <span id="rnom">---</span> Ω<br>
+    V<sub>EX</sub>: <span id="vex">---</span> V<br>
+    Wzmocnienie: <span id="gain">---</span>
+</div>
+
+<script>
+let tempChartTime;
+let tempChartDate;
+
+function exportChart(chart, filename) {
+    const link = document.createElement('a');
+    link.href = chart.toBase64Image();
+    link.download = filename;
+    link.click();
+}
+
+// Funkcja pobierająca dane historyczne
+async function loadHistoricalData() {
+    const date = document.getElementById('datePicker').value;
+    if (!date) {
+        alert("Wybierz datę!");
+        return;
+    }
+
+    try {
+        // Endpoint backendu dla danych historycznych
+        const response = await fetch(`/api/data/history?date=${date}`);
+        const data = await response.json();
+
+        const labels = data.labels;
+        const temps = data.temperatures;
+
+        if (temps.length === 0) {
+            alert("Brak danych dla wybranej daty.");
+            tempChartDate.data.labels = [];
+            tempChartDate.data.datasets.forEach(ds => ds.data = []);
+            tempChartDate.update();
+            return;
+        }
+
+        const avg = temps.reduce((a, b) => a + b, 0) / temps.length;
+        const avgLine = new Array(temps.length).fill(avg);
+
+        tempChartDate.data.labels = labels;
+        tempChartDate.data.datasets[0].data = temps;
+        tempChartDate.data.datasets[1].data = avgLine;
+        tempChartDate.update();
+    } catch (err) {
+        console.error("Błąd pobierania danych historycznych:", err);
+        alert("Błąd pobierania danych historycznych. Sprawdź konsolę.");
+    }
+}
+
+// Funkcja pobierająca dane w czasie rzeczywistym
+async function fetchAndUpdateCharts() {
+    try {
+        const response = await fetch('/api/data');
+        const data = await response.json();
+
+        const labels = data.labels;
+        const temps = data.temperatures;
+        if (temps.length === 0) return;
+
+        const avg = temps.reduce((a, b) => a + b, 0) / temps.length;
+        const avgLine = new Array(temps.length).fill(avg);
+
+        // Wykres 1 – czas rzeczywisty
+        tempChartTime.data.labels = labels;
+        tempChartTime.data.datasets[0].data = temps;
+        tempChartTime.data.datasets[1].data = avgLine;
+        tempChartTime.update();
+
+        // Dane tekstowe
+        document.getElementById('lastTemp').textContent = temps[temps.length - 1].toFixed(2);
+        document.getElementById('avgTemp').textContent = avg.toFixed(2);
+
+        document.getElementById('sonda').textContent = data.meta.sonda;
+        document.getElementById('freq').textContent = data.meta.freq;
+        document.getElementById('moc').textContent = data.meta.moc;
+        document.getElementById('rnom').textContent = data.meta.r_nominal;
+        document.getElementById('vex').textContent = data.meta.v_ex;
+        document.getElementById('gain').textContent = data.meta.gain;
+
+    } catch (err) {
+        console.error("Błąd pobierania danych:", err);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Wykres 1 – czas rzeczywisty
+    tempChartTime = new Chart(document.getElementById('tempChartTime'), {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperatura [°C]',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.2,
+                    pointRadius: 3
+                },
+                {
+                    label: 'Średnia temperatura [°C]',
+                    data: [],
+                    borderColor: 'rgb(54, 162, 235)',
+                    borderDash: [6, 6],
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'second',
+                        displayFormats: { second: 'HH:mm:ss' }
+                    },
+                    title: { display: true, text: 'Czas' }
+                },
+                y: {
+                    title: { display: true, text: 'Temperatura [°C]' }
+                }
+            }
+        }
+    });
+
+    // Wykres 2 – historyczny
+    tempChartDate = new Chart(document.getElementById('tempChartDate'), {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                {
+                    label: 'Temperatura [°C]',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.2,
+                    pointRadius: 3
+                },
+                {
+                    label: 'Średnia temperatura [°C]',
+                    data: [],
+                    borderColor: 'rgb(201, 203, 207)',
+                    borderDash: [6, 6],
+                    pointRadius: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        tooltipFormat: 'yyyy-MM-dd HH:mm',
+                        displayFormats: { minute: 'yyyy-MM-dd HH:mm' }
+                    },
+                    title: { display: true, text: 'Data i czas' }
+                },
+                y: {
+                    title: { display: true, text: 'Temperatura [°C]' }
+                }
+            }
+        }
+    });
+
+    fetchAndUpdateCharts();
+    setInterval(fetchAndUpdateCharts, 5000); // odświeżanie co 5 sekund
+});
+</script>
+
+</body>
+</html>
