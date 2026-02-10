@@ -1,4 +1,6 @@
 from RsSmw import *
+from time import sleep
+
 
 class Generator_Virtual():
     def __init__(self, resource_name: str, id_query: bool = True, reset: bool = False, options: str = None, direct_session: object = None):
@@ -45,7 +47,7 @@ class Generator(RsSmw):
         self.repcap_hwInstance_set(repcap.HwInstance.InstA)
 
 
-    def meas_prep(self, mode, amplitude : int, freq : int):
+    def meas_prep(self, mode, amplitude : float, freq : float):
         self.source.frequency.set_mode(mode)
         self.source.power.level.immediate.set_amplitude(amplitude)
         self.source.frequency.fixed.set_value(freq)
@@ -53,26 +55,20 @@ class Generator(RsSmw):
         response = self.utilities.query_str('*IDN?')
         print(f'Direct SCPI response on *IDN?: {response}')
 
-    def set_output(self, set: bool):
+    def start_stop_generator(self, set: bool):
         self.output.state.set_value(set)
         msg = "Stardet transmision" if set  else "Stoped Transmision"
-        print(msg)
+        print(msg) # Tylko do testów, w finalnej wersji usunąć bo spowalnia niepotrzebnie
 
-    # def meas_prep_fOFMD(self, set, c_freq, cp_no_symbols, total_sub_car, sub_car_offset, seq_len, no_occ_sub):
-    #     self.output.state.set_value(set)
-    #     self.source.frequency.fixed.set_value(c_freq)
-
-    #     self.source.bb.ofdm.set_modulation(mod_type=enums.C5Gmod.FOFDm)
-    #     self.source.bb.ofdm.set_cp_symbols(cp_no_symbols)
-    #     self.source.bb.ofdm.set_nsubcarriers(total_sub_car)
-    #     self.source.bb.ofdm.set_offset(offset= sub_car_offset)
-    #     self.source.bb.ofdm.set_seq_length(seq_len)
-    #     self.source.bb.ofdm.set_noccupied(no_occ_sub)
 
 
 
 if __name__ == "__main__":
-    from config_obj import Config
-    config = Config()
-    Generator = Generator(config, False)
-    print("Succeeded")
+    '''Example use'''
+    Gen = Generator(ip_addres='192.168.1.20') # Utworzenie połączenia z generatorem za pomocą TCP/IP
+    Gen.com_check() # Weryfikacja połączenia oraz ustawienie timeout dla virtualnej karty VISA i oczekiwania na odpowedź
+    Gen.meas_prep(mode='CW', amplitude=10, freq=6.5E9) # Ustawienie parametrów na których ma pracować generator
+    Gen.start_stop_generator(True) # Włączenie nadawania przez generator (domyślnie nie będzie nadawał a przynajmniej nie powinien)
+    sleep(5) # generator nadaje przez 5 sekund
+    Gen.start_stop_generator(False) # Wyłącze nadawania przez generator, Pamiętać o tym przy kończeniu pomiarów
+
